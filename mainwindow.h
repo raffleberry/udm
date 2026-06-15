@@ -2,6 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+
+#include "core/session.h"
 #include "extension/server/eserver.h"
 
 QT_BEGIN_NAMESPACE
@@ -18,8 +20,14 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-private:
+   private slots:
+    void on_pushButton_clicked();
+
+    void on_pushButton_2_clicked();
+
+   private:
     Ui::MainWindow *ui;
     Extension::EServer eSvr;
+    Core::Session s;
 };
 #endif // MAINWINDOW_H

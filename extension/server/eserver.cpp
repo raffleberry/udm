@@ -19,9 +19,7 @@ namespace Extension {
 
     void EServer::stopServer() {
         this->svr.stop();
-        qDebug() << "Stopped Server";
         this->tSvr.join();
-        qDebug() << "Server Thread Joined";
     }
 }
 
