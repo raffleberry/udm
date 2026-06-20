@@ -1,5 +1,5 @@
-#ifndef SESSION_H
-#define SESSION_H
+#ifndef DOWNLOAD_H
+#define DOWNLOAD_H
 #include <aria2/aria2.h>
 
 #include <mutex>
@@ -69,25 +69,25 @@ class Job {
 
 class JobQueue {
    public:
-    void push(Job& job);
-    Job pop();
+    void push(std::unique_ptr<Job> job);
+    std::unique_ptr<Job> pop();
     bool empty();
 
    private:
-    std::queue<Job> q;
+    std::queue<std::unique_ptr<Job>> q;
     std::mutex mu;
 };
 
 /**
  * @brief One Session per process
  */
-class Session {
+class Download {
    public:
-    Session(aria2::KeyVals opts);
+    Download(aria2::KeyVals opts);
 
     void init(aria2::KeyVals opts);
-    void addJob(Job& job);
-    ~Session();
+    void addJob(std::unique_ptr<Job> job);
+    ~Download();
 
    private:
     JobQueue q;
@@ -97,4 +97,4 @@ class Session {
 
 }  // namespace Core
 
-#endif // SESSION_H
+#endif // DOWNLOAD_H

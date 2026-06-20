@@ -10,10 +10,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools Sql)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ARIA2 REQUIRED IMPORTED_TARGET libaria2)
-
 set(TS_FILES untitled_download_manager_en_US.ts)
 
 set(PROJECT_SOURCES
@@ -32,11 +31,13 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         extension/server/eserver.cpp
         extension/server/httplib.h
         extension/server/eserver.h
+
+        core/download.h
         core/download.cpp
-        core/session.h
-        core/session.cpp
         core/appcfg.cpp
         core/appcfg.h
+        core/store.cpp
+        core/store.h
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET untitled_download_manager APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -62,6 +63,7 @@ endif()
 
 target_link_libraries(untitled_download_manager PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 target_link_libraries(untitled_download_manager PRIVATE PkgConfig::ARIA2)
+target_link_libraries(untitled_download_manager PRIVATE Qt${QT_VERSION_MAJOR}::Sql)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

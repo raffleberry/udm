@@ -1,12 +1,16 @@
 #include "mainwindow.h"
 
-#include <string>
+#include <memory>
 
-#include "./ui_mainwindow.h"
+#include "core/store.h"
 #include "extension/server/eserver.h"
+#include "ui_mainwindow.h"
 
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), s(Core::Session({})) {
+    : QMainWindow(parent), ui(new Ui::MainWindow), s(Core::Download({})) {
+    QCoreApplication::setOrganizationName("raffleberry.github.io");
+    QCoreApplication::setApplicationName("udm");
+    Core::initializeStore();
     ui->setupUi(this);
     eSvr.startServer();
 }
@@ -19,8 +23,8 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_pushButton_clicked() {
     auto url = ui->lineEdit->text().toStdString();
-    auto job = Core::Job(url);
-    s.addJob(job);
+    std::unique_ptr<Core::Job> job = std::make_unique<Core::Job>(url);
+    s.addJob(std::move(job));
     ui->lineEdit->clear();
 }
 
