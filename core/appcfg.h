@@ -4,7 +4,7 @@
 
 namespace AppCfg {
 
-const aria2::KeyVals Defaults = {
+const aria2::KeyVals GlobalDownloaderOpts = {
     {"dir", "/home/user/Downloads/"},
 };
 }

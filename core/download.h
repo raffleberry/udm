@@ -81,18 +81,29 @@ class JobQueue {
 /**
  * @brief One Session per process
  */
-class Download {
+class Downloader {
    public:
-    Download(aria2::KeyVals opts);
-
     void init(aria2::KeyVals opts);
     void addJob(std::unique_ptr<Job> job);
-    ~Download();
+    void deinit();
+
+    static Downloader& i() {
+        static Downloader instance;
+        return instance;
+    }
+
+    Downloader(const Downloader&) = delete;
+    Downloader& operator=(const Downloader&) = delete;
+    Downloader(Downloader&&) = delete;
+    Downloader& operator=(Downloader&&) = delete;
 
    private:
     JobQueue q;
-    std::jthread downloader;
+    std::jthread tDownloader;
     aria2::Session* s;
+
+    Downloader() {}
+    ~Downloader() = default;
 };
 
 }  // namespace Core

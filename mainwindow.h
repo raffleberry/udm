@@ -3,7 +3,6 @@
 
 #include <QMainWindow>
 
-#include "core/download.h"
 #include "extension/server/eserver.h"
 
 QT_BEGIN_NAMESPACE
@@ -28,6 +27,5 @@ public:
    private:
     Ui::MainWindow *ui;
     Extension::EServer eSvr;
-    Core::Download s;
 };
 #endif // MAINWINDOW_H

@@ -7,9 +7,9 @@
 
 namespace Core {
 
-Download::Download(aria2::KeyVals opts) { init(opts); }
-Download::~Download() {
+void Downloader::deinit() {
     aria2::shutdown(this->s);
+    this->tDownloader.join();
     int rv = aria2::sessionFinal(this->s);
     if (rv != 0) {
         qDebug() << "error: " << errStr(rv);
@@ -17,7 +17,7 @@ Download::~Download() {
     aria2::libraryDeinit();
 }
 
-void Download::init(aria2::KeyVals opts) {
+void Downloader::init(aria2::KeyVals opts) {
     aria2::SessionConfig config;
     aria2::libraryInit();
     config.keepRunning = true;
@@ -56,10 +56,10 @@ void Download::init(aria2::KeyVals opts) {
         }
     };
 
-    this->downloader = std::jthread(downloaderLoop);
+    this->tDownloader = std::jthread(downloaderLoop);
 }
 
-void Download::addJob(std::unique_ptr<Job> job) { q.push(std::move(job)); }
+void Downloader::addJob(std::unique_ptr<Job> job) { q.push(std::move(job)); }
 
 Job::Job(std::string uri, aria2::KeyVals opts) {
     this->uri = uri;
@@ -87,7 +87,7 @@ bool JobQueue::empty() {
 }
 
 void mergeDefaults(aria2::KeyVals& opts) {
-    for (auto& [k, v] : AppCfg::Defaults) {
+    for (auto& [k, v] : AppCfg::GlobalDownloaderOpts) {
         auto it =
             find_if(opts.begin(), opts.end(), [&](const auto& item) { return k == item.first; });
         if (it == opts.end()) {
