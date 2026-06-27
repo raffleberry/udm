@@ -2,7 +2,9 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QTableView>
 
+#include "core/download.h"
 #include "extension/server/eserver.h"
 
 QT_BEGIN_NAMESPACE
@@ -20,12 +22,11 @@ public:
     ~MainWindow();
 
    private slots:
-    void on_pushButton_clicked();
-
-    void on_pushButton_2_clicked();
 
    private:
     Ui::MainWindow *ui;
     Extension::EServer eSvr;
+    std::vector<std::shared_ptr<Core::Job>> jobs;
+    std::unique_ptr<QTableView> downloadsView;
 };
 #endif // MAINWINDOW_H

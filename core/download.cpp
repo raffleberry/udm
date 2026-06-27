@@ -17,7 +17,10 @@ void Downloader::deinit() {
     aria2::libraryDeinit();
 }
 
-void Downloader::init(aria2::KeyVals opts) {
+void Downloader::init(QObject* parent, std::vector<std::shared_ptr<Job>>& jobs,
+                      aria2::KeyVals opts) {
+    this->allJobs = std::move(jobs);
+    this->parent = parent;
     aria2::SessionConfig config;
     aria2::libraryInit();
     config.keepRunning = true;
@@ -35,15 +38,16 @@ void Downloader::init(aria2::KeyVals opts) {
             }
             auto now = std::chrono::steady_clock::now();
             auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
-            if (diff < 900) {
+            if (diff < 1000) {
                 continue;
             }
             start = now;
 
             while (!this->q.empty()) {
-                std::unique_ptr<Job> j = this->q.pop();
+                std::shared_ptr<Job> j = this->q.pop();
                 j->execute(this->s);
             }
+
             std::vector<aria2::A2Gid> gids = aria2::getActiveDownload(this->s);
             for (auto gid : gids) {
                 aria2::DownloadHandle* dh = aria2::getDownloadHandle(this->s, gid);
@@ -84,6 +88,35 @@ std::unique_ptr<Job> JobQueue::pop() {
 bool JobQueue::empty() {
     std::lock_guard<std::mutex> l(this->mu);
     return this->q.size() == 0;
+}
+
+void GStat::refresh(aria2::Session* session) {
+    aria2::GlobalStat gstat = aria2::getGlobalStat(session);
+    GStat::downloadSpeed = gstat.downloadSpeed;
+    GStat::uploadSpeed = gstat.uploadSpeed;
+    GStat::numActive = gstat.numActive;
+    GStat::numStopped = gstat.numStopped;
+    GStat::numWaiting = gstat.numWaiting;
+
+    std::vector<aria2::A2Gid> gids = aria2::getActiveDownload(session);
+    for (const auto& job : GStat::jobs) {
+        if (job) {
+        }
+    }
+    for (const auto& gid : gids) {
+        aria2::DownloadHandle* dh = aria2::getDownloadHandle(session, gid);
+        if (dh) {
+            std::cerr << "    [" << aria2::gidToHex(gid) << "] " << dh->getCompletedLength() << "/"
+                      << dh->getTotalLength() << "("
+                      << (dh->getTotalLength() > 0
+                              ? (100 * dh->getCompletedLength() / dh->getTotalLength())
+                              : 0)
+                      << "%)"
+                      << " D:" << dh->getDownloadSpeed() / 1024
+                      << "KiB/s, U:" << dh->getUploadSpeed() / 1024 << "KiB/s" << std::endl;
+            aria2::deleteDownloadHandle(dh);
+        }
+    }
 }
 
 void mergeDefaults(aria2::KeyVals& opts) {

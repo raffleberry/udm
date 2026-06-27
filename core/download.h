@@ -2,6 +2,7 @@
 #define DOWNLOAD_H
 #include <aria2/aria2.h>
 
+#include <QObject>
 #include <mutex>
 #include <queue>
 #include <string>
@@ -9,6 +10,9 @@
 #include <unordered_map>
 
 namespace Core {
+
+enum DSTATUS { STOPPED, DOWNLOADING, COMPLETE };
+
 const std::unordered_map<int, std::string> DownloadErrorCodes = {
     {0, "all downloads were successful."},
     {1, "an unknown error occurred."},
@@ -56,15 +60,28 @@ std::string errStr(int rv);
 
 void mergeDefaults(aria2::KeyVals& opts);
 
-class Job {
+class Job : QObject {
    public:
     Job(std::string uri, aria2::KeyVals opts = {});
 
     void execute(aria2::Session* s);
 
+    void setGid(std::string& gid) { this->gid = gid; }
+    const std::string& getGid() const { return this->gid; }
+
    private:
     std::string uri;
     aria2::KeyVals opts;
+    std::string gid;
+};
+
+class GStat : QObject {
+    Q_OBJECT
+   public:
+    GStat(QObject* parent);
+    void refresh(aria2::Session* session);
+    static int downloadSpeed, uploadSpeed, numActive, numStopped, numWaiting;
+    static std::vector<std::shared_ptr<Job>> jobs;
 };
 
 class JobQueue {
@@ -79,11 +96,11 @@ class JobQueue {
 };
 
 /**
- * @brief One Session per process
+ * @brief One Downloader per process
  */
 class Downloader {
    public:
-    void init(aria2::KeyVals opts);
+    void init(QObject* parent, std::vector<std::shared_ptr<Job>>& jobs, aria2::KeyVals opts);
     void addJob(std::unique_ptr<Job> job);
     void deinit();
 
@@ -99,8 +116,11 @@ class Downloader {
 
    private:
     JobQueue q;
+    std::vector<std::shared_ptr<Job>> allJobs;
     std::jthread tDownloader;
     aria2::Session* s;
+    QObject* parent;
+    GStat* jstat;
 
     Downloader() {}
     ~Downloader() = default;

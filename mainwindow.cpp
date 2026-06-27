@@ -13,8 +13,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     QCoreApplication::setApplicationName("udm");
     Core::initializeStore();
     ui->setupUi(this);
+    ui->
+
+        this->downloadsView = std::make_unique<QTableView>(parent);
+
     eSvr.startServer();
-    Core::Downloader::i().init(AppCfg::GlobalDownloaderOpts);
+    Core::Downloader::i().init(parent, this->jobs, AppCfg::GlobalDownloaderOpts);
 }
 
 MainWindow::~MainWindow()
@@ -24,11 +28,3 @@ MainWindow::~MainWindow()
     Core::Downloader::i().deinit();
 }
 
-void MainWindow::on_pushButton_clicked() {
-    auto url = ui->lineEdit->text().toStdString();
-    std::unique_ptr<Core::Job> job = std::make_unique<Core::Job>(url);
-    Core::Downloader::i().addJob(std::move(job));
-    ui->lineEdit->clear();
-}
-
-void MainWindow::on_pushButton_2_clicked() {}
