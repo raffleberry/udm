@@ -1,0 +1,25 @@
+{
+    "manifest_version": 2,
+    "name": "Native Ping",
+    "version": "1.0",
+    "description": "Send ping to a Go native messaging host",
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "udm@raffleberry",
+            "strict_min_version": "50.0"
+        }
+    },
+    "permissions": [
+        "nativeMessaging"
+    ],
+    "background": {
+        "scripts": [
+            "background.js"
+        ],
+        "persistent": true
+    },
+    "browser_action": {
+        "default_title": "Ping native host",
+        "default_popup": "popup.html"
+    }
+}

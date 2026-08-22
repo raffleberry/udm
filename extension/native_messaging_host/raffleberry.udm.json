@@ -1,0 +1,9 @@
+{
+    "name": "raffleberry.udm",
+    "description": "Go ping/pong native messaging host",
+    "path": "__NATIVE_BIN_INSTALL_PATH__",
+    "type": "stdio",
+    "allowed_extensions": [
+        "udm@raffleberry"
+    ]
+}

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: sans-serif; width: 300px; padding: 12px; margin: 0; }
+    button { width: 100%; padding: 10px; margin-bottom: 8px; cursor: pointer; }
+    #status { font-size: 12px; color: #666; margin-bottom: 8px; }
+    pre {
+      background: #f4f4f4;
+      padding: 8px;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 220px;
+      overflow: auto;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Status: …</div>
+  <button id="ping">Send ping</button>
+  <pre id="out">Waiting for replies…</pre>
+  <script src="popup.js"></script>
+</body>
+</html>
