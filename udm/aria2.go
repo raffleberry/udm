@@ -46,7 +46,7 @@ func NewManager(c *Config) *Manager {
 }
 
 func (m *Manager) WSURL() string {
-	return fmt.Sprintf("ws://127.0.0.1:%d/jsonrpc", m.cfg.Port)
+	return fmt.Sprintf("ws://127.0.0.1:%d/jsonrpc", m.cfg.Aria2Port)
 }
 
 func (m *Manager) Start(ctx context.Context) error {
@@ -67,7 +67,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	args := []string{
 		"--enable-rpc=true",
 		"--rpc-listen-all=false",
-		"--rpc-listen-port=" + strconv.Itoa(m.cfg.Port),
+		"--rpc-listen-port=" + strconv.Itoa(m.cfg.Aria2Port),
 		"--rpc-secret=" + m.cfg.Secret,
 		"--dir=" + m.cfg.DownloadDir,
 		"--continue=true",
@@ -87,7 +87,7 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = m.cfg.CfgDir
-	hideConsole(cmd) // no-op on unix; CREATE_NO_WINDOW on windows
+	hideConsole(cmd) // no-op on unix; CREATE_NO_WINDOW on windows TODO: Test if this works
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start aria2c: %w", err)
@@ -144,7 +144,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		_ = m.cmd.Process.Kill()
 		<-done
 		return ctx.Err()
-	case <-time.After(8 * time.Second):
+	case <-time.After(m.cfg.ShutdownTimeout):
 		_ = m.cmd.Process.Kill()
 		<-done
 		return nil

@@ -7,7 +7,7 @@ import (
 	"net"
 )
 
-func scanFirstFreePort(startPort, endPort int) (int, error) {
+func FindFreePort(startPort, endPort int) (int, error) {
 	for port := startPort; port <= endPort; port++ {
 		address := fmt.Sprintf("127.0.0.1:%d", port)
 

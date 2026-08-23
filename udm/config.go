@@ -15,12 +15,16 @@ type Config struct {
 	LogFile      string
 	DbTimeLayout string
 
-	Binary       string
-	Port         int
-	Secret       string
-	StopWithApp  bool // --stop-with-process
-	ExtraArgs    []string
-	ReadyTimeout time.Duration
+	Binary          string
+	Aria2Port       int
+	Secret          string
+	StopWithApp     bool // --stop-with-process
+	ExtraArgs       []string
+	ReadyTimeout    time.Duration
+	ShutdownTimeout time.Duration
+
+	MsgPortStart int
+	MsgPortEnd   int
 }
 
 func (c *Config) Defaults() {
@@ -55,14 +59,19 @@ func (c *Config) Defaults() {
 	logTimeLayout := time.Now().Format("2006_01_02_15_04_05")
 	c.LogFile = filepath.Join(c.LogDir, fmt.Sprintf("udm_%s.log", time.Now().Format(logTimeLayout)))
 
-	c.Port, err = scanFirstFreePort(56767, 60000)
+	c.Aria2Port, err = FindFreePort(56000, 57000)
 	if err != nil {
 		panic(err)
 	}
 
+	c.MsgPortStart = 54000
+	c.MsgPortEnd = 55000
+
 	c.Secret = randomSecret()
 
 	c.ReadyTimeout = 15 * time.Second
+
+	c.ShutdownTimeout = 8 * time.Second
 
 }
 
