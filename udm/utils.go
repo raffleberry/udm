@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
+	"strings"
 )
 
 func FindFreePort(startPort, endPort int) (int, error) {
@@ -24,4 +26,9 @@ func randomSecret() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func IsGoRun() bool {
+	execPath := os.Args[0]
+	return strings.Contains(execPath, "go-build")
 }

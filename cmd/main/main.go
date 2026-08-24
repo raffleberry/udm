@@ -11,7 +11,7 @@ import (
 
 func main() {
 	cfg := udm.NewConfig()
-	man := udm.NewManager(cfg)
+	man := udm.NewA2(cfg)
 
 	extSrv := udm.NewNativeMsgReceiver(cfg)
 
