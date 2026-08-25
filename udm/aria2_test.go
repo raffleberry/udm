@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -14,8 +15,10 @@ import (
 )
 
 func Test_filepathSymlinks(t *testing.T) {
-	p, err := filepath.EvalSymlinks("/home/user/Code/udm/udm/aria2_test.go")
-	t.Logf("p:[%v], err:[%v]", p, err)
+	if runtime.GOOS == "linux" {
+		p, err := filepath.EvalSymlinks("/home/user/Code/udm/udm/aria2_test.go")
+		t.Logf("p:[%v], err:[%v]", p, err)
+	}
 }
 
 func Test_AddDownload(t *testing.T) {
@@ -25,14 +28,13 @@ func Test_AddDownload(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	err := a2.Start(ctx)
-	cancel()
+	defer cancel()
 	require.Nil(t, err)
 
 	d := udm.Download{
-		FileName:         fmt.Sprintf("udm_%d.zip", time.Now().Unix()),
-		Uri:              "https://github.com/raffleberry/udm/archive/refs/heads/main.zip",
-		MaxDownloadLimit: "50K",
-		Dir:              os.TempDir(),
+		FileName: fmt.Sprintf("udm_%d.zip", time.Now().Unix()),
+		Uri:      "https://github.com/raffleberry/udm/archive/refs/heads/main.zip",
+		Dir:      os.TempDir(),
 	}
 	log.Println("Adding download")
 	err, done := a2.AddDownload(d)
