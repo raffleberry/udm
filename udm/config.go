@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+type A2Opts struct {
+	BtMaxOpenFiles               string
+	DownloadResult               string
+	KeepUnfinishedDownloadResult string
+	Log                          string
+	LogLevel                     string
+	MaxConcurrentDownloads       string
+	MaxDownloadResult            string
+	MaxOverallDownloadLimit      string
+	MaxOverallUploadLimit        string
+	OptimizeConcurrentDownloads  string
+	SaveCookies                  string
+	SaveSession                  string
+	ServerStatOf                 string
+}
+
 type Config struct {
 	AppName      string
 	DownloadDir  string

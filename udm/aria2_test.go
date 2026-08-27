@@ -50,3 +50,18 @@ func Test_AddDownload(t *testing.T) {
 	}
 
 }
+
+func Test_A2Error(t *testing.T) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Indexes do not match Error Code: %v", r)
+		}
+	}()
+
+	for i, a2Err := range udm.A2Error {
+		if i != a2Err.ErrCode {
+			t.Fatalf("Indexes do not match Error Code: %v", i)
+		}
+	}
+}
