@@ -25,26 +25,28 @@ func Test_AddDownload(t *testing.T) {
 	cfg := udm.NewConfig()
 	cfg.Defaults()
 	a2 := udm.NewA2(cfg)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	err := a2.Start(ctx)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second*5))
 	defer cancel()
+
+	err := a2.Start(ctx)
 	require.Nil(t, err)
+	defer a2.Shutdown(context.Background())
 
 	d := udm.Download{
-		FileName: fmt.Sprintf("udm_%d.zip", time.Now().Unix()),
-		Uri:      "https://github.com/raffleberry/udm/archive/refs/heads/main.zip",
-		Dir:      os.TempDir(),
+		Out: fmt.Sprintf("udm_%d.zip", time.Now().Unix()),
+		Uri: "https://github.com/raffleberry/udm/archive/refs/heads/main.zip",
+		Dir: os.TempDir(),
 	}
 	log.Println("Adding download")
-	err, done := a2.AddDownload(d)
+	gid, err, status := a2.AddDownload(d)
 	if err != nil {
 		log.Println(err.Error())
 		t.FailNow()
 	}
+	a2.AddPollFor(gid)
 
-	require.Nil(t, err)
-	<-done
-	a2.Shutdown(context.Background())
+	for s := range status {
+		fmt.Println("Status Chan", s)
+	}
 
 }

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -16,14 +17,19 @@ import (
 )
 
 var (
-	ErrAriaNotFound = fmt.Errorf("aria2c not found. Please Install it and try again")
-	ErrUnexpected   = fmt.Errorf("Unexpected")
+	ErrAriaNotFound     = fmt.Errorf("aria2c not found. Please Install it and try again")
+	ErrUnexpected       = fmt.Errorf("Unexpected")
+	ErrAriaNotStarted   = fmt.Errorf("aria2c not Started :)")
+	ErrAriaNotConnected = fmt.Errorf("aria2c not Connected????? o_O")
 )
 
 type Download struct {
-	FileName string
-	Dir      string
-	Uri      string
+	// FileName
+	Out string
+	// Download Directory
+	Dir string
+	// Download Url
+	Uri string
 	// default in B, can add K or M
 	MaxDownloadLimit string
 }
@@ -78,138 +84,224 @@ func getAriaBin() (string, error) {
 	return "", ErrAriaNotFound
 }
 
+var DStatusMsg = struct {
+	Progress int
+	Complete int
+	Error    int
+	Stop     int
+}{
+	0, 1, 2, 3,
+}
+
+type Dstatus struct {
+	Type int
+	Rate int
+	Gid  string
+	Err  error
+	Done bool
+}
+
 type A2 struct {
 	cfg       *Config
 	conn      *arigo.Client
 	cmd       *exec.Cmd
 	startedUs bool
 	mu        sync.Mutex
+	muPoll    sync.Mutex
 
-	addCh  chan addRequest
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	unSubCompl arigo.UnsubscribeFunc
+	unSubStop  arigo.UnsubscribeFunc
+	unSubErr   arigo.UnsubscribeFunc
+	unSubPause arigo.UnsubscribeFunc
+	unSubStart arigo.UnsubscribeFunc
+
+	wantPoll   []string
+	dlChMp     map[string]chan Dstatus
+	stopPollCh chan struct{}
 }
 
 func NewA2(c *Config) *A2 {
-	return &A2{cfg: c}
+	a2 := &A2{cfg: c}
+	a2.dlChMp = make(map[string]chan Dstatus)
+	return a2
 }
 
 func (m *A2) WSURL() string {
 	return fmt.Sprintf("ws://127.0.0.1:%d/jsonrpc", m.cfg.Aria2Port)
 }
 
-func (m *A2) AddDownload(d Download) (error, <-chan struct{}) {
-	m.mu.Lock()
-	addCh := m.addCh
-	m.mu.Unlock()
-
-	if addCh == nil {
-		return fmt.Errorf("aria2 manager not started"), nil
-	}
-
-	respCh := make(chan addResponse, 1)
-	select {
-	case addCh <- addRequest{download: d, respCh: respCh}:
-		res := <-respCh
-		return res.err, res.done
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("aria2 manager not responding"), nil
-	}
+// starts sending `Dstatus` info for download with 'gid'
+func (m *A2) AddPollFor(gid string) {
+	m.muPoll.Lock()
+	defer m.muPoll.Unlock()
+	m.wantPoll = append(m.wantPoll, gid)
 }
 
-func (m *A2) startManager() {
-	if m.addCh != nil {
-		return
-	}
-	m.addCh = make(chan addRequest)
-	m.stopCh = make(chan struct{})
-	m.wg.Add(1)
-	go m.runLoop()
-}
-
-func (m *A2) runLoop() {
-	defer m.wg.Done()
-	active := make(map[string]chan struct{})
-	events := make(chan *arigo.DownloadEvent, 64)
-
-	// Subscribe to global events
-	m.conn.Subscribe(arigo.CompleteEvent, func(e *arigo.DownloadEvent) {
-		select {
-		case events <- e:
-		default:
-		}
-	})
-	m.conn.Subscribe(arigo.ErrorEvent, func(e *arigo.DownloadEvent) {
-		select {
-		case events <- e:
-		default:
-		}
-	})
-	m.conn.Subscribe(arigo.StopEvent, func(e *arigo.DownloadEvent) {
-		select {
-		case events <- e:
-		default:
-		}
-	})
-
-	for {
-		select {
-		case req := <-m.addCh:
-			opts := arigo.Options{
-				Out:              req.download.FileName,
-				MaxDownloadLimit: req.download.MaxDownloadLimit,
-				Dir:              req.download.Dir,
-			}
-			gid, err := m.conn.AddURI([]string{req.download.Uri}, &opts)
-			if err != nil {
-				req.respCh <- addResponse{err: err}
-				continue
-			}
-
-			done := make(chan struct{})
-			active[gid.GID] = done
-			req.respCh <- addResponse{done: done}
-			go m.monitor(gid, done)
-
-		case e := <-events:
-			if done, ok := active[e.GID]; ok {
-				close(done)
-				delete(active, e.GID)
-			}
-
-		case <-m.stopCh:
-			for gid, done := range active {
-				close(done)
-				delete(active, gid)
-			}
-			return
+// stops sending `Dstatus` info for download with 'gid'
+func (m *A2) RemPollFor(gid string) {
+	m.muPoll.Lock()
+	defer m.muPoll.Unlock()
+	for i := range m.wantPoll {
+		if m.wantPoll[i] == gid {
+			m.wantPoll[i] = m.wantPoll[len(m.wantPoll)-1]
+			m.wantPoll = m.wantPoll[:len(m.wantPoll)-1]
 		}
 	}
 }
 
-func (m *A2) monitor(gid arigo.GID, done <-chan struct{}) {
-	ticker := time.NewTicker(2 * time.Second)
+// TODO: Implement a fan out broadcast like the example u saw.
+func (m *A2) poll() {
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-done:
+		case <-m.stopPollCh:
 			return
 		case <-ticker.C:
-			s, err := gid.TellStatus()
-			if err != nil {
-				return
+			m.muPoll.Lock()
+			for _, gid := range m.wantPoll {
+				s, err := m.conn.TellStatus(gid)
+				if err != nil {
+					return
+				}
+				var progress float64
+				if s.TotalLength > 0 {
+					progress = float64(s.CompletedLength) / float64(s.TotalLength) * 100
+				}
+				slog.Info("Download progress",
+					"gid", s.GID,
+					"status", s.Status,
+					"speed", s.DownloadSpeed,
+					"progress", fmt.Sprintf("%.2f%%", progress))
 			}
-			var progress float64
-			if s.TotalLength > 0 {
-				progress = float64(s.CompletedLength) / float64(s.TotalLength) * 100
-			}
-			slog.Info("Download progress",
-				"gid", s.GID,
-				"status", s.Status,
-				"speed", s.DownloadSpeed,
-				"progress", fmt.Sprintf("%.2f%%", progress))
+			m.muPoll.Unlock()
 		}
 	}
+}
+
+func (m *A2) AddDownload(d Download) (string, error, <-chan Dstatus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.conn == nil {
+		return "", ErrAriaNotStarted, nil
+	}
+
+	opts := arigo.Options{
+		Out:              d.Out,
+		Dir:              d.Dir,
+		MaxDownloadLimit: d.MaxDownloadLimit,
+	}
+	gid, err := m.conn.AddURI([]string{d.Uri}, &opts)
+
+	if err != nil {
+		return "", err, nil
+	}
+
+	respCh := make(chan Dstatus)
+
+	m.dlChMp[gid.GID] = respCh
+
+	return gid.GID, nil, respCh
+}
+
+func (m *A2) startManager() {
+	go m.monitor()
+	go m.poll()
+}
+
+func (m *A2) monitor() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.monitorStop()
+
+	// Check if the m.dlChMp needs closing after one of these events.
+
+	m.unSubStart = m.conn.Subscribe(arigo.StartEvent, func(e *arigo.DownloadEvent) {
+		slog.Info("Events:Start", "event - ", e)
+		// ch, ok := m.dlChMp[e.GID]
+		// if !ok {
+		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+		// 	return
+		// }
+		// ch <- Dstatus{
+		// 	Type: DStatusMsg.Stop,
+		// }
+	})
+
+	m.unSubStop = m.conn.Subscribe(arigo.StopEvent, func(e *arigo.DownloadEvent) {
+		slog.Info("Events:Stop", "event - ", e)
+		// ch, ok := m.dlChMp[e.GID]
+		// if !ok {
+		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+		// 	return
+		// }
+		// ch <- Dstatus{
+		// 	Type: DStatusMsg.Stop,
+		// }
+	})
+
+	m.unSubPause = m.conn.Subscribe(arigo.PauseEvent, func(e *arigo.DownloadEvent) {
+		slog.Info("Events:Pause", "event - ", e)
+		// ch, ok := m.dlChMp[e.GID]
+		// if !ok {
+		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+		// 	return
+		// }
+		// ch <- Dstatus{
+		// 	Type: DStatusMsg.Stop,
+		// }
+	})
+
+	m.unSubCompl = m.conn.Subscribe(arigo.CompleteEvent, func(e *arigo.DownloadEvent) {
+		slog.Info("Events:Complete", "event - ", e)
+
+		ch, ok := m.dlChMp[e.GID]
+		if !ok {
+			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			return
+		}
+		ch <- Dstatus{
+			Done: true,
+			Type: DStatusMsg.Complete,
+		}
+
+		delete(m.dlChMp, e.GID)
+		close(ch)
+	})
+
+	m.unSubErr = m.conn.Subscribe(arigo.ErrorEvent, func(e *arigo.DownloadEvent) {
+		slog.Info("Events:Error", "event - ", e)
+		// ch, ok := m.dlChMp[e.GID]
+		// if !ok {
+		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+		// 	return
+		// }
+		// ch <- Dstatus{
+		// 	Type: DStatusMsg.Error,
+		// }
+	})
+
+}
+
+func (m *A2) monitorStop() {
+	if m.unSubStart != nil {
+		m.unSubStop()
+	}
+	if m.unSubStop != nil {
+		m.unSubStop()
+	}
+	if m.unSubPause != nil {
+		m.unSubStop()
+	}
+	if m.unSubCompl != nil {
+		m.unSubCompl()
+	}
+	if m.unSubErr != nil {
+		m.unSubErr()
+	}
+
 }
 
 func (m *A2) Start(ctx context.Context) error {
@@ -238,7 +330,9 @@ func (m *A2) Start(ctx context.Context) error {
 		"--save-session=" + session,
 		"--save-session-interval=30",
 		"--log=" + filepath.Join(m.cfg.CfgDir, "aria2.log"),
-		"--log-level=notice",
+		// "--log-level=notice",
+		"--log-level=info",
+
 		"--console-log-level=warn",
 	}
 	if st, err := os.Stat(session); err == nil && st.Size() > 0 {
@@ -249,7 +343,7 @@ func (m *A2) Start(ctx context.Context) error {
 	}
 	args = append(args, m.cfg.ExtraArgs...)
 
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := exec.Command(bin, args...)
 	cmd.Dir = m.cfg.CfgDir
 	hideConsole(cmd) // no-op on unix; CREATE_NO_WINDOW on windows TODO: Test if this works
 
@@ -259,9 +353,13 @@ func (m *A2) Start(ctx context.Context) error {
 	}
 	m.cmd = cmd
 	m.startedUs = true
-	slog.Info("Started Aria2")
+	slog.Info("Started Aria2 cmd")
 
-	go func() { _ = cmd.Wait() }()
+	go func() {
+		err := cmd.Wait()
+		debug.PrintStack()
+		slog.Info("Stopped Aria2 cmd", "err", err)
+	}()
 	deadline := time.Now().Add(m.cfg.ReadyTimeout)
 	for time.Now().Before(deadline) {
 		if m.tryConnect(ctx) {
@@ -286,16 +384,23 @@ func (m *A2) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.stopCh != nil {
-		close(m.stopCh)
-		m.wg.Wait()
-		m.stopCh = nil
-		m.addCh = nil
-	}
+	slog.Info("Stopping Poll")
 
 	if m.conn != nil {
-		_ = m.conn.SaveSession()
-		_ = m.conn.Close()
+		err := m.conn.SaveSession()
+		if err != nil {
+			slog.Error("A2 Shutdown: conn.SaveSession", "err", err)
+		}
+		err = m.conn.Shutdown()
+		if err != nil {
+			slog.Error("A2 Shutdown: conn.Shutdown", "err", err)
+		}
+		err = m.conn.Close()
+		if err != nil {
+			slog.Error("A2 Shutdown: conn.Close", "err", err)
+		}
+	} else {
+		slog.Error("A2 Shutdown: conn", "err", ErrAriaNotStarted)
 	}
 
 	if m.cmd == nil || m.cmd.Process == nil {
@@ -307,12 +412,15 @@ func (m *A2) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
+		slog.Info("A2 Shutdown: Success")
 		return nil
 	case <-ctx.Done():
+		slog.Info("A2 Shutdown: Deadline exceed while cmd.Wait")
 		_ = m.cmd.Process.Kill()
 		<-done
 		return ctx.Err()
 	case <-time.After(m.cfg.ShutdownTimeout):
+		slog.Warn("Aria2 cmd shutdown timedout.killing..")
 		_ = m.cmd.Process.Kill()
 		<-done
 		return nil

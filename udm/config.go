@@ -73,6 +73,8 @@ func (c *Config) Defaults() {
 
 	c.ShutdownTimeout = 8 * time.Second
 
+	c.StopWithApp = true
+
 }
 
 func NewConfig() *Config {
