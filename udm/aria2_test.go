@@ -22,6 +22,7 @@ func Test_filepathSymlinks(t *testing.T) {
 }
 
 func Test_AddDownload(t *testing.T) {
+
 	cfg := udm.NewConfig()
 	cfg.Defaults()
 	a2 := udm.NewA2(cfg)
@@ -32,21 +33,27 @@ func Test_AddDownload(t *testing.T) {
 	require.Nil(t, err)
 	defer a2.Shutdown(context.Background())
 
+	// python3 -m http.server -d /
 	d := udm.Download{
-		Out: fmt.Sprintf("udm_%d.zip", time.Now().Unix()),
-		Uri: "https://github.com/raffleberry/udm/archive/refs/heads/main.zip",
-		Dir: os.TempDir(),
+
+		// Out: fmt.Sprintf("download_%d.zip", time.Now().Unix()),
+		Uri:              "http://127.0.0.1:8000/usr/lib/x86_64-linux-gnu/libc.a",
+		Dir:              os.TempDir(),
+		MaxDownloadLimit: "512K",
 	}
+
 	log.Println("Adding download")
-	gid, err, status := a2.AddDownload(d)
+	gid, err := a2.AddDownload(d)
 	if err != nil {
 		log.Println(err.Error())
 		t.FailNow()
 	}
-	a2.AddPollFor(gid)
+	status := a2.Sub(gid)
 
 	for s := range status {
-		fmt.Println("Status Chan", s)
+		if s.Type == udm.DStatusMsg.Progress {
+			fmt.Printf("Status: %.2f, %db/s\n", 100*float64(s.SizeLoaded)/float64(s.SizeTotal), s.Rate)
+		}
 	}
 
 }

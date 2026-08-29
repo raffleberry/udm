@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -88,15 +87,23 @@ var DStatusMsg = struct {
 	Progress int
 	Complete int
 	Error    int
+	Start    int
 	Stop     int
+	Pause    int
 }{
-	0, 1, 2, 3,
+	0, 1, 2, 3, 4, 5,
 }
 
 type Dstatus struct {
 	Type int
-	Rate int
+	//bytes/sec
+	Rate uint
 	Gid  string
+
+	SizeTotal  uint
+	SizeLoaded uint
+	BitField   string
+
 	Err  error
 	Done bool
 }
@@ -109,20 +116,20 @@ type A2 struct {
 	mu        sync.Mutex
 	muPoll    sync.Mutex
 
-	unSubCompl arigo.UnsubscribeFunc
-	unSubStop  arigo.UnsubscribeFunc
-	unSubErr   arigo.UnsubscribeFunc
-	unSubPause arigo.UnsubscribeFunc
 	unSubStart arigo.UnsubscribeFunc
+	unSubStop  arigo.UnsubscribeFunc
+	unSubPause arigo.UnsubscribeFunc
+	unSubCompl arigo.UnsubscribeFunc
+	unSubErr   arigo.UnsubscribeFunc
 
-	wantPoll   []string
-	dlChMp     map[string]chan Dstatus
+	subMp      map[string][]chan Dstatus
 	stopPollCh chan struct{}
 }
 
 func NewA2(c *Config) *A2 {
 	a2 := &A2{cfg: c}
-	a2.dlChMp = make(map[string]chan Dstatus)
+	a2.subMp = make(map[string][]chan Dstatus)
+	a2.stopPollCh = make(chan struct{})
 	return a2
 }
 
@@ -130,61 +137,88 @@ func (m *A2) WSURL() string {
 	return fmt.Sprintf("ws://127.0.0.1:%d/jsonrpc", m.cfg.Aria2Port)
 }
 
+func (m *A2) pub(gid string, ch chan Dstatus, s Dstatus) {
+	select {
+	case ch <- s:
+		slog.Debug("A2 pub: Success", "gid", gid, "type", s.Type)
+		return
+	case lost := <-ch:
+		slog.Warn("A2 pub: Lost", "gid", gid, "lost", lost)
+	default:
+		slog.Error("A2 pub: CATASTROPHIC", "gid", gid, "s", s, "len(ch)(possibly stale)", len(ch))
+	}
+}
+
 // starts sending `Dstatus` info for download with 'gid'
-func (m *A2) AddPollFor(gid string) {
+func (m *A2) Sub(gid string) <-chan Dstatus {
 	m.muPoll.Lock()
 	defer m.muPoll.Unlock()
-	m.wantPoll = append(m.wantPoll, gid)
+	_, ok := m.subMp[gid]
+	if !ok {
+		m.subMp[gid] = []chan Dstatus{}
+	}
+	ch := make(chan Dstatus, 8)
+	m.subMp[gid] = append(m.subMp[gid], ch)
+	return ch
 }
 
 // stops sending `Dstatus` info for download with 'gid'
-func (m *A2) RemPollFor(gid string) {
+func (m *A2) UnSub(gid string, ch chan Dstatus) {
 	m.muPoll.Lock()
 	defer m.muPoll.Unlock()
-	for i := range m.wantPoll {
-		if m.wantPoll[i] == gid {
-			m.wantPoll[i] = m.wantPoll[len(m.wantPoll)-1]
-			m.wantPoll = m.wantPoll[:len(m.wantPoll)-1]
+	for i, chMp := range m.subMp[gid] {
+		if chMp == ch {
+			close(m.subMp[gid][i])
+			m.subMp[gid][i] = nil
+			m.subMp[gid] = append(m.subMp[gid][:i], m.subMp[gid][i+1:]...)
+			return
 		}
 	}
 }
 
-// TODO: Implement a fan out broadcast like the example u saw.
 func (m *A2) poll() {
+	slog.Info("Started Polling")
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-m.stopPollCh:
+			slog.Debug("poll: Stop received")
 			return
 		case <-ticker.C:
 			m.muPoll.Lock()
-			for _, gid := range m.wantPoll {
-				s, err := m.conn.TellStatus(gid)
-				if err != nil {
-					return
+			for k, v := range m.subMp {
+				for _, ch := range v {
+					s, err := m.conn.TellStatus(k)
+					if err != nil {
+						return
+					}
+
+					d := Dstatus{
+						Type:       DStatusMsg.Progress,
+						Gid:        k,
+						Rate:       s.DownloadSpeed,
+						SizeTotal:  s.TotalLength,
+						SizeLoaded: s.CompletedLength,
+						BitField:   s.BitField,
+					}
+					if s.ErrorMessage != "" {
+						d.Err = fmt.Errorf("%s", s.ErrorMessage)
+					}
+					m.pub(k, ch, d)
 				}
-				var progress float64
-				if s.TotalLength > 0 {
-					progress = float64(s.CompletedLength) / float64(s.TotalLength) * 100
-				}
-				slog.Info("Download progress",
-					"gid", s.GID,
-					"status", s.Status,
-					"speed", s.DownloadSpeed,
-					"progress", fmt.Sprintf("%.2f%%", progress))
 			}
 			m.muPoll.Unlock()
 		}
 	}
 }
 
-func (m *A2) AddDownload(d Download) (string, error, <-chan Dstatus) {
+func (m *A2) AddDownload(d Download) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.conn == nil {
-		return "", ErrAriaNotStarted, nil
+		return "", ErrAriaNotStarted
 	}
 
 	opts := arigo.Options{
@@ -195,18 +229,14 @@ func (m *A2) AddDownload(d Download) (string, error, <-chan Dstatus) {
 	gid, err := m.conn.AddURI([]string{d.Uri}, &opts)
 
 	if err != nil {
-		return "", err, nil
+		return "", err
 	}
 
-	respCh := make(chan Dstatus)
-
-	m.dlChMp[gid.GID] = respCh
-
-	return gid.GID, nil, respCh
+	return gid.GID, nil
 }
 
 func (m *A2) applyGlobalSettings() {
-	if m.conn != nil {
+	if m.conn == nil {
 		slog.Error("Failed to set global A2 settings, no connection. [conn == nil]")
 		return
 	}
@@ -225,71 +255,80 @@ func (m *A2) monitor() {
 
 	m.monitorStop()
 
-	// Check if the m.dlChMp needs closing after one of these events.
-
 	m.unSubStart = m.conn.Subscribe(arigo.StartEvent, func(e *arigo.DownloadEvent) {
 		slog.Info("Events:Start", "event - ", e)
-		// ch, ok := m.dlChMp[e.GID]
-		// if !ok {
-		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
-		// 	return
-		// }
-		// ch <- Dstatus{
-		// 	Type: DStatusMsg.Stop,
-		// }
+		chList, ok := m.subMp[e.GID]
+		if !ok {
+			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			return
+		}
+		for _, ch := range chList {
+			ch <- Dstatus{
+				Type: DStatusMsg.Start,
+			}
+		}
 	})
 
 	m.unSubStop = m.conn.Subscribe(arigo.StopEvent, func(e *arigo.DownloadEvent) {
 		slog.Info("Events:Stop", "event - ", e)
-		// ch, ok := m.dlChMp[e.GID]
-		// if !ok {
-		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
-		// 	return
-		// }
-		// ch <- Dstatus{
-		// 	Type: DStatusMsg.Stop,
-		// }
+		chList, ok := m.subMp[e.GID]
+		if !ok {
+			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			return
+		}
+		for _, ch := range chList {
+			ch <- Dstatus{
+				Type: DStatusMsg.Stop,
+			}
+		}
 	})
 
 	m.unSubPause = m.conn.Subscribe(arigo.PauseEvent, func(e *arigo.DownloadEvent) {
 		slog.Info("Events:Pause", "event - ", e)
-		// ch, ok := m.dlChMp[e.GID]
-		// if !ok {
-		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
-		// 	return
-		// }
-		// ch <- Dstatus{
-		// 	Type: DStatusMsg.Stop,
-		// }
+		chList, ok := m.subMp[e.GID]
+		if !ok {
+			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			return
+		}
+		for _, ch := range chList {
+			ch <- Dstatus{
+				Type: DStatusMsg.Pause,
+			}
+		}
+
 	})
 
 	m.unSubCompl = m.conn.Subscribe(arigo.CompleteEvent, func(e *arigo.DownloadEvent) {
 		slog.Info("Events:Complete", "event - ", e)
 
-		ch, ok := m.dlChMp[e.GID]
+		chList, ok := m.subMp[e.GID]
 		if !ok {
 			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
 			return
 		}
-		ch <- Dstatus{
-			Done: true,
-			Type: DStatusMsg.Complete,
+		for i, ch := range chList {
+			ch <- Dstatus{
+				Done: true,
+				Type: DStatusMsg.Complete,
+			}
+			close(ch)
+			chList[i] = nil
 		}
-
-		delete(m.dlChMp, e.GID)
-		close(ch)
+		delete(m.subMp, e.GID)
 	})
 
 	m.unSubErr = m.conn.Subscribe(arigo.ErrorEvent, func(e *arigo.DownloadEvent) {
 		slog.Info("Events:Error", "event - ", e)
-		// ch, ok := m.dlChMp[e.GID]
-		// if !ok {
-		// 	slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
-		// 	return
-		// }
-		// ch <- Dstatus{
-		// 	Type: DStatusMsg.Error,
-		// }
+		chList, ok := m.subMp[e.GID]
+		if !ok {
+			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			return
+		}
+		for _, ch := range chList {
+			ch <- Dstatus{
+				Type: DStatusMsg.Error,
+			}
+		}
 	})
 
 }
@@ -335,14 +374,19 @@ func (m *A2) Start(ctx context.Context) error {
 		"--rpc-listen-port=" + strconv.Itoa(m.cfg.Aria2Port),
 		"--rpc-secret=" + m.cfg.Secret,
 		"--dir=" + m.cfg.DownloadDir,
-		"--continue=true",
+		// "--continue=true",
 		"--save-session=" + session,
 		"--save-session-interval=30",
 		"--log=" + filepath.Join(m.cfg.CfgDir, "aria2.log"),
-		// "--log-level=notice",
-		"--log-level=info",
 		"--console-log-level=warn",
 	}
+
+	if IsGoRun() {
+		args = append(args, "--log-level=info")
+	} else {
+		args = append(args, "--log-level=notice")
+	}
+
 	if st, err := os.Stat(session); err == nil && st.Size() > 0 {
 		args = append(args, "--input-file="+session)
 	}
@@ -365,7 +409,6 @@ func (m *A2) Start(ctx context.Context) error {
 
 	go func() {
 		err := cmd.Wait()
-		debug.PrintStack()
 		slog.Info("Stopped Aria2 cmd", "err", err)
 	}()
 	deadline := time.Now().Add(m.cfg.ReadyTimeout)
@@ -393,6 +436,15 @@ func (m *A2) Shutdown(ctx context.Context) error {
 	defer m.mu.Unlock()
 
 	slog.Info("Stopping Poll")
+	m.stopPollCh <- struct{}{}
+
+	for k, v := range m.subMp {
+		for i, ch := range v {
+			close(ch)
+			v[i] = nil
+		}
+		m.subMp[k] = nil
+	}
 
 	if m.conn != nil {
 		err := m.conn.SaveSession()
