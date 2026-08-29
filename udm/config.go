@@ -27,6 +27,7 @@ type Config struct {
 	AppName      string
 	DownloadDir  string
 	CfgDir       string
+	DbPath       string
 	LogDir       string
 	LogFile      string
 	DbTimeLayout string
@@ -62,6 +63,8 @@ func (c *Config) Defaults() {
 		panic(err)
 	}
 	c.CfgDir = filepath.Join(c.CfgDir, c.AppName)
+
+	c.DbPath = filepath.Join(c.CfgDir, "store.db")
 
 	err = os.MkdirAll(c.CfgDir, 0755)
 	if err != nil {

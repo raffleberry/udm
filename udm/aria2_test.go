@@ -34,7 +34,7 @@ func Test_AddDownload(t *testing.T) {
 	defer a2.Shutdown(context.Background())
 
 	// python3 -m http.server -d /
-	d := udm.Download{
+	d := udm.Job{
 
 		// Out: fmt.Sprintf("download_%d.zip", time.Now().Unix()),
 		Uri:              "http://127.0.0.1:8000/usr/lib/x86_64-linux-gnu/libc.a",

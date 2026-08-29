@@ -22,7 +22,7 @@ var (
 	ErrAriaNotConnected = fmt.Errorf("aria2c not Connected????? o_O")
 )
 
-type Download struct {
+type Job struct {
 	// FileName
 	Out string
 	// Download Directory
@@ -31,16 +31,6 @@ type Download struct {
 	Uri string
 	// default in B, can add K or M
 	MaxDownloadLimit string
-}
-
-type addRequest struct {
-	download Download
-	respCh   chan<- addResponse
-}
-
-type addResponse struct {
-	err  error
-	done <-chan struct{}
 }
 
 func getAriaBin() (string, error) {
@@ -213,7 +203,7 @@ func (m *A2) poll() {
 	}
 }
 
-func (m *A2) AddDownload(d Download) (string, error) {
+func (m *A2) AddDownload(d Job) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
