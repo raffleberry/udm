@@ -1,4 +1,4 @@
 
 [working-directory: "extension/host"]
 install_host:
-    go run cmd/install/install.g`o
+    go run cmd/install/install.go
