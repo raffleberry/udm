@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"uuid"
 
 	"github.com/siku2/arigo"
 )
@@ -23,6 +24,8 @@ var (
 )
 
 type Job struct {
+	Uuid uuid.UUID
+
 	// FileName
 	Out string
 	// Download Directory

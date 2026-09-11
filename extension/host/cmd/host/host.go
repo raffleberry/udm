@@ -7,14 +7,12 @@ import (
 	"io"
 	"os"
 	"time"
-)
 
-var (
-	LogPath = "/tmp/udm-native-ping.log"
+	"github.com/raffleberry/udm/extension/host"
 )
 
 func logf(format string, args ...any) {
-	f, err := os.OpenFile(LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(host.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
 	}
@@ -57,6 +55,7 @@ func writeMessage(v any) error {
 }
 
 func main() {
+
 	logf("=== host started (pid %d) ===", os.Getpid())
 
 	for {

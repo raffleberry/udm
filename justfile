@@ -1,6 +1,6 @@
-hosts_dir := env("HOME") + "/.mozilla/native-messaging-hosts"
-cfg_dir   := env("HOME") + "/.config/udm_raffleberry"
-bin       := cfg_dir + "/udm-browser-integration-host"
+hosts_dir := home_dir() / ".mozilla" / "native-messaging-hosts"
+cfg_dir   := home_dir() / ".config" / "udm_raffleberry"
+bin       := cfg_dir / "udm-browser-integration-host"
 src_dir   := "extension/native_messaging_host"
 
 install_native:
