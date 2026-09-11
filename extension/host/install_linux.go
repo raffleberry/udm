@@ -86,7 +86,7 @@ func installHost() error {
 	}
 
 	//copy and reg the host binary
-	udmCfgDir := filepath.Join(cfgDir, "udm")
+	udmCfgDir := filepath.Join(cfgDir, "udm_raffleberry")
 	err = os.MkdirAll(udmCfgDir, 0755)
 	if err != nil {
 		slog.Error("error creating udm config dir", "err", err)
