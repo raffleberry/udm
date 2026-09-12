@@ -8,13 +8,6 @@ function connect() {
     console.log("Connecting to native host…");
     port = browser.runtime.connectNative(HOST);
 
-    port.onMessage.addListener((msg) => {
-        console.log("← native:", msg);
-        // Forward every reply to any open popup / content scripts
-        browser.runtime.sendMessage({ type: "native-reply", payload: msg })
-            .catch(() => { }); // no listeners is fine
-    });
-
     port.onDisconnect.addListener(() => {
         console.log("Native host disconnected", browser.runtime.lastError);
         port = null;

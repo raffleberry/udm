@@ -50,11 +50,8 @@ func getPkgDir() (string, error) {
 	}
 
 	hostBin := filepath.Join(pkgDir, "udm-browser-integration-host")
-	if _, err := os.Stat(hostBin); err != nil {
-		if !IsGoRun() {
-			return "", fmt.Errorf("host file binary[%s] not found : %w", hostBin, err)
-		}
-		slog.Warn("extfiles directory not found in pkgDir", "path", hostBin)
+
+	if IsGoRun() {
 		slog.Info("compiling host", "path", hostBin)
 
 		err := exec.Command("go", "build", "-o", hostBin, filepath.Join("cmd", "host", "host.go")).Run()
@@ -62,6 +59,11 @@ func getPkgDir() (string, error) {
 			return "", fmt.Errorf("Failed to compile host binary: %w", err)
 		}
 		slog.Info("compile success")
+	} else {
+		_, err := os.Stat(hostBin)
+		if err != nil {
+			return "", fmt.Errorf("host file binary[%s] not found : %w", hostBin, err)
+		}
 	}
 
 	return pkgDir, nil
