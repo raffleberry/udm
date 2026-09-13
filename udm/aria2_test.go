@@ -21,11 +21,11 @@ func Test_filepathSymlinks(t *testing.T) {
 	}
 }
 
-func Test_AddDownload(t *testing.T) {
+func Test_Download(t *testing.T) {
 
 	cfg := udm.NewConfig()
 	cfg.Defaults()
-	a2 := udm.NewA2(cfg)
+	a2 := udm.NewA2(cfg, nil)
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second*5))
 	defer cancel()
 
@@ -37,22 +37,31 @@ func Test_AddDownload(t *testing.T) {
 	d := udm.Job{
 
 		// Out: fmt.Sprintf("download_%d.zip", time.Now().Unix()),
-		Uri:              "http://127.0.0.1:8000/usr/lib/x86_64-linux-gnu/libc.a",
-		Dir:              os.TempDir(),
-		MaxDownloadLimit: "512K",
+		Uri: "http://127.0.0.1:8000/usr/lib/x86_64-linux-gnu/libc.a",
+		Dir: os.TempDir(),
+		// MaxDownloadLimit: "512K",
 	}
 
 	log.Println("Adding download")
 	gid, err := a2.AddDownload(d)
-	if err != nil {
-		log.Println(err.Error())
-		t.FailNow()
-	}
+	require.Nil(t, err)
+
+	log.Println("Subscribing to download")
 	status := a2.Sub(gid)
 
+	err = a2.JobStart(gid)
+	require.Nil(t, err)
+
 	for s := range status {
-		if s.Type == udm.DStatusMsg.Progress {
-			fmt.Printf("Status: %.2f, %db/s\n", 100*float64(s.SizeLoaded)/float64(s.SizeTotal), s.Rate)
+		if s.Type == udm.DStatusTyp.Active {
+			fmt.Printf("gid: %s, Status: %.2f, %db/s\n", gid, 100*float64(s.SizeLoaded)/float64(s.SizeTotal), s.Rate)
+		} else if s.Type == udm.DStatusTyp.Complete {
+			fmt.Printf("gid: %s, Status: Complete\n", gid)
+			break
+		} else if s.Type == udm.DStatusTyp.Error {
+			require.NotNil(t, s.Err)
+			fmt.Printf("gid: %s, Status: Error\n", gid)
+			fmt.Printf("Err msg : %s\n", s.Err.Error())
 		}
 	}
 

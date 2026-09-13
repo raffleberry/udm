@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
+	"net/rpc"
 	"os"
 	"time"
+
+	"github.com/raffleberry/udm/udm"
 )
 
 var MsgAction = struct {
@@ -67,7 +72,7 @@ func writeMessage(v any) error {
 	return err // ← no Sync()
 }
 
-func process(m Msg) error {
+func process(c *rpc.Client, m Msg) error {
 	logf("processing: %s, %s", m.Action, m.Data)
 
 	switch m.Action {
@@ -84,13 +89,52 @@ func process(m Msg) error {
 		}
 	case MsgAction.Download:
 		url := m.Data
-		logf("Got url : %s", url)
+		logf("Got url : %s, passing it to udm", url)
+		req := udm.RpcNewDownload{Uri: url}
+		res := false
+		err := c.Call("Rpc.AddDownload", &req, &res)
+		logf("result: %v", err)
 	}
 
 	return nil
 }
 
+func connect() *rpc.Client {
+	startPort := 54000
+	endPort := 54010
+	slog.Info("Checking for receivers", "start", startPort, "end", endPort)
+	var client *rpc.Client
+	var conn net.Conn
+	var err error
+	for port := startPort; port <= endPort; port++ {
+		adr := fmt.Sprintf("127.0.0.1:%d", port)
+
+		conn, err = net.Dial("tcp", adr)
+		if err != nil {
+			slog.Debug("Port closed", "port", port)
+			continue
+		}
+		slog.Debug("Port open, connecting...", "port", port)
+
+		client = rpc.NewClient(conn)
+		if client != nil {
+			break
+		}
+		slog.Debug("Port open,, but no RPC Client", "port", port)
+		conn.Close()
+	}
+	if client == nil {
+		slog.Error("No rpc client found, search range", "start", startPort, "end", endPort)
+		panic("No clients")
+	}
+
+	return client
+
+}
+
 func Run() {
+
+	client := connect()
 
 	logf("=== host started (pid %d) ===", os.Getpid())
 
@@ -101,7 +145,7 @@ func Run() {
 			return
 		}
 
-		err = process(msg)
+		err = process(client, msg)
 		if err != nil {
 			logf("Error Processing: %v", err)
 			continue

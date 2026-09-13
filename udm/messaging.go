@@ -7,10 +7,16 @@ import (
 	"net/rpc"
 )
 
-type Rpc struct{}
+type Rpc struct {
+	app *NativeMsgReceiver
+}
 
 type RpcReq struct {
 	Msg string
+}
+
+type RpcNewDownload struct {
+	Uri string
 }
 
 type RpcRes struct {
@@ -26,8 +32,17 @@ func (r *Rpc) Ping(req *RpcReq, res *RpcRes) error {
 	return nil
 }
 
+func (r *Rpc) AddDownload(req *RpcNewDownload, res *bool) error {
+	j := Job{
+		Uri: req.Uri,
+	}
+	_, _ = r.app.man.AddDownload(j)
+	return nil
+}
+
 type NativeMsgReceiver struct {
 	rpcSvr    *rpc.Server
+	man       Manager
 	listener  net.Listener
 	listening bool
 	cfg       *Config
@@ -37,10 +52,7 @@ type NativeMsgReceiver struct {
 
 func (r *NativeMsgReceiver) Start() error {
 	var err error
-	r.Port, err = FindFreePort(r.cfg.MsgPortStart, r.cfg.MsgPortEnd)
-	if err != nil {
-		panic(err)
-	}
+	r.Port = r.cfg.NativeRcvrPort
 
 	addr := fmt.Sprintf("127.0.0.1:%d", r.Port)
 
@@ -53,7 +65,7 @@ func (r *NativeMsgReceiver) Start() error {
 
 	r.rpcSvr = rpc.NewServer()
 
-	err = r.rpcSvr.Register(&Rpc{})
+	err = r.rpcSvr.Register(&Rpc{app: r})
 	if err != nil {
 		return err
 	}
@@ -69,8 +81,9 @@ func (r *NativeMsgReceiver) Stop() error {
 	return nil
 }
 
-func NewNativeMsgReceiver(cfg *Config) *NativeMsgReceiver {
-	rv := &NativeMsgReceiver{}
-	rv.cfg = cfg
-	return rv
+func NewNativeMsgReceiver(cfg *Config, man Manager) *NativeMsgReceiver {
+	return &NativeMsgReceiver{
+		man: man,
+		cfg: cfg,
+	}
 }

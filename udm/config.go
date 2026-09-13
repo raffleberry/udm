@@ -40,8 +40,7 @@ type Config struct {
 	ReadyTimeout    time.Duration
 	ShutdownTimeout time.Duration
 
-	MsgPortStart int
-	MsgPortEnd   int
+	NativeRcvrPort int
 }
 
 func (c *Config) Defaults() {
@@ -83,8 +82,10 @@ func (c *Config) Defaults() {
 		panic(err)
 	}
 
-	c.MsgPortStart = 54000
-	c.MsgPortEnd = 55000
+	c.NativeRcvrPort, err = FindFreePort(54000, 54010)
+	if err != nil {
+		panic(err)
+	}
 
 	c.Secret = randomSecret()
 

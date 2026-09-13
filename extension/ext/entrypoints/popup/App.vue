@@ -21,7 +21,6 @@ const ping = async () => {
     } else {
       status.value = "disconnected"
     }
-
   } catch (e: any) {
     console.log(e)
     status.value = e?.message

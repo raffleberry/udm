@@ -1,5 +1,15 @@
 package udm_test
 
-import "log/slog"
+import (
+	"log/slog"
+	"os"
+)
 
-var _ = slog.SetLogLoggerLevel(slog.LevelDebug)
+func init() {
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     slog.LevelDebug,
+		AddSource: true,
+	})))
+
+}

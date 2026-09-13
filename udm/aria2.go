@@ -2,6 +2,7 @@ package udm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -22,19 +23,6 @@ var (
 	ErrAriaNotStarted   = fmt.Errorf("aria2c not Started :)")
 	ErrAriaNotConnected = fmt.Errorf("aria2c not Connected????? o_O")
 )
-
-type Job struct {
-	Uuid uuid.UUID
-
-	// FileName
-	Out string
-	// Download Directory
-	Dir string
-	// Download Url
-	Uri string
-	// default in B, can add K or M
-	MaxDownloadLimit string
-}
 
 func getAriaBin() (string, error) {
 	exeName := "aria2c"
@@ -76,34 +64,10 @@ func getAriaBin() (string, error) {
 	return "", ErrAriaNotFound
 }
 
-var DStatusMsg = struct {
-	Progress int
-	Complete int
-	Error    int
-	Start    int
-	Stop     int
-	Pause    int
-}{
-	0, 1, 2, 3, 4, 5,
-}
-
-type Dstatus struct {
-	Type int
-	//bytes/sec
-	Rate uint
-	Gid  string
-
-	SizeTotal  uint
-	SizeLoaded uint
-	BitField   string
-
-	Err  error
-	Done bool
-}
-
 type A2 struct {
 	cfg       *Config
 	conn      *arigo.Client
+	str       Store
 	cmd       *exec.Cmd
 	startedUs bool
 	mu        sync.Mutex
@@ -119,14 +83,14 @@ type A2 struct {
 	stopPollCh chan struct{}
 }
 
-func NewA2(c *Config) *A2 {
-	a2 := &A2{cfg: c}
+func NewA2(c *Config, s Store) Manager {
+	a2 := &A2{cfg: c, str: s}
 	a2.subMp = make(map[string][]chan Dstatus)
 	a2.stopPollCh = make(chan struct{})
 	return a2
 }
 
-func (m *A2) WSURL() string {
+func (m *A2) wsUrl() string {
 	return fmt.Sprintf("ws://127.0.0.1:%d/jsonrpc", m.cfg.Aria2Port)
 }
 
@@ -186,14 +150,20 @@ func (m *A2) poll() {
 					if err != nil {
 						return
 					}
-
+					slog.Debug("arigo Status", "status", s)
 					d := Dstatus{
-						Type:       DStatusMsg.Progress,
+						Type:       DStatusTyp.Active,
 						Gid:        k,
 						Rate:       s.DownloadSpeed,
 						SizeTotal:  s.TotalLength,
 						SizeLoaded: s.CompletedLength,
 						BitField:   s.BitField,
+					}
+					if s.Status == arigo.StatusWaiting {
+						d.Type = DStatusTyp.Queued
+					}
+					if s.Status == arigo.StatusPaused {
+						d.Type = DStatusTyp.Queued
 					}
 					if s.ErrorMessage != "" {
 						d.Err = fmt.Errorf("%s", s.ErrorMessage)
@@ -204,6 +174,15 @@ func (m *A2) poll() {
 			m.muPoll.Unlock()
 		}
 	}
+}
+
+func (m *A2) AddDownloadFromUri(uri string) (string, error) {
+	j := Job{
+		Uuid: uuid.New(),
+		Uri:  uri,
+		Dir:  m.cfg.DownloadDir,
+	}
+	return m.AddDownload(j)
 }
 
 func (m *A2) AddDownload(d Job) (string, error) {
@@ -218,6 +197,7 @@ func (m *A2) AddDownload(d Job) (string, error) {
 		Out:              d.Out,
 		Dir:              d.Dir,
 		MaxDownloadLimit: d.MaxDownloadLimit,
+		Pause:            true,
 	}
 	gid, err := m.conn.AddURI([]string{d.Uri}, &opts)
 
@@ -228,12 +208,25 @@ func (m *A2) AddDownload(d Job) (string, error) {
 	return gid.GID, nil
 }
 
-func (m *A2) applyGlobalSettings() {
+func (m *A2) JobStart(jobId string) error {
+	return m.conn.Unpause(jobId)
+}
+
+func (m *A2) JobPause(jobId string) error {
+	return m.conn.Pause(jobId)
+}
+
+func (m *A2) JobStop(jobId string) error {
+	return m.conn.Remove(jobId)
+}
+
+func (m *A2) applyGlobalSettings() error {
 	if m.conn == nil {
 		slog.Error("Failed to set global A2 settings, no connection. [conn == nil]")
-		return
+		return ErrAriaNotStarted
 	}
 	// m.conn.ChangeGlobalOptions() TODO:
+	return ErrUnexpected
 }
 
 func (m *A2) startManager() {
@@ -252,12 +245,12 @@ func (m *A2) monitor() {
 		slog.Info("Events:Start", "event - ", e)
 		chList, ok := m.subMp[e.GID]
 		if !ok {
-			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			slog.Warn("Untracked Download", "gid", e.GID)
 			return
 		}
 		for _, ch := range chList {
 			ch <- Dstatus{
-				Type: DStatusMsg.Start,
+				Type: DStatusTyp.Start,
 			}
 		}
 	})
@@ -266,26 +259,28 @@ func (m *A2) monitor() {
 		slog.Info("Events:Stop", "event - ", e)
 		chList, ok := m.subMp[e.GID]
 		if !ok {
-			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			slog.Warn("Untracked Download", "gid", e.GID)
 			return
 		}
 		for _, ch := range chList {
 			ch <- Dstatus{
-				Type: DStatusMsg.Stop,
+				Type: DStatusTyp.Stop,
 			}
+			close(ch)
 		}
+		delete(m.subMp, e.GID)
 	})
 
 	m.unSubPause = m.conn.Subscribe(arigo.PauseEvent, func(e *arigo.DownloadEvent) {
 		slog.Info("Events:Pause", "event - ", e)
 		chList, ok := m.subMp[e.GID]
 		if !ok {
-			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			slog.Warn("Untracked Download", "gid", e.GID)
 			return
 		}
 		for _, ch := range chList {
 			ch <- Dstatus{
-				Type: DStatusMsg.Pause,
+				Type: DStatusTyp.Queued,
 			}
 		}
 
@@ -296,13 +291,13 @@ func (m *A2) monitor() {
 
 		chList, ok := m.subMp[e.GID]
 		if !ok {
-			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			slog.Warn("Untracked Download", "gid", e.GID)
 			return
 		}
 		for i, ch := range chList {
 			ch <- Dstatus{
 				Done: true,
-				Type: DStatusMsg.Complete,
+				Type: DStatusTyp.Complete,
 			}
 			close(ch)
 			chList[i] = nil
@@ -314,14 +309,29 @@ func (m *A2) monitor() {
 		slog.Info("Events:Error", "event - ", e)
 		chList, ok := m.subMp[e.GID]
 		if !ok {
-			slog.Error("UNKNOWN Download, NOT TRACKING!", "gid", e.GID)
+			slog.Warn("Untracked Download", "gid", e.GID)
 			return
 		}
-		for _, ch := range chList {
-			ch <- Dstatus{
-				Type: DStatusMsg.Error,
-			}
+
+		status, err := m.conn.TellStatus(e.GID)
+		if err != nil {
+			slog.Warn("Failed to fetch error details after download failed", "err", err)
+			return
 		}
+
+		dErr := errors.New(status.ErrorMessage)
+
+		for i, ch := range chList {
+			ch <- Dstatus{
+				Type: DStatusTyp.Error,
+				Err:  dErr,
+			}
+			close(ch)
+			chList[i] = nil
+
+		}
+		delete(m.subMp, e.GID)
+
 	})
 
 }
@@ -367,6 +377,7 @@ func (m *A2) Start(ctx context.Context) error {
 		"--rpc-listen-port=" + strconv.Itoa(m.cfg.Aria2Port),
 		"--rpc-secret=" + m.cfg.Secret,
 		"--dir=" + m.cfg.DownloadDir,
+		"--dir=" + m.cfg.DownloadDir,
 		// "--continue=true",
 		"--save-session=" + session,
 		"--save-session-interval=30",
@@ -380,9 +391,9 @@ func (m *A2) Start(ctx context.Context) error {
 		args = append(args, "--log-level=notice")
 	}
 
-	if st, err := os.Stat(session); err == nil && st.Size() > 0 {
-		args = append(args, "--input-file="+session)
-	}
+	// if st, err := os.Stat(session); err == nil && st.Size() > 0 {
+	// 	args = append(args, "--input-file="+session)
+	// }
 	if m.cfg.StopWithApp {
 		args = append(args, "--stop-with-process="+strconv.Itoa(os.Getpid()))
 	}
@@ -482,7 +493,7 @@ func (m *A2) Shutdown(ctx context.Context) error {
 
 func (m *A2) tryConnect(ctx context.Context) bool {
 	var err error
-	m.conn, err = arigo.DialContext(ctx, m.WSURL(), m.cfg.Secret)
+	m.conn, err = arigo.DialContext(ctx, m.wsUrl(), m.cfg.Secret)
 	if err != nil {
 		return false
 	}

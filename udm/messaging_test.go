@@ -13,10 +13,14 @@ import (
 var udmRpc *udm.NativeMsgReceiver
 
 func setupRpc() {
+	log.Println("Setting up RPC")
+	var err error
 	cfg := udm.NewConfig()
-	cfg.MsgPortStart = 51010
-	cfg.MsgPortEnd = 51020
-	udmRpc = udm.NewNativeMsgReceiver(cfg)
+	cfg.NativeRcvrPort, err = udm.FindFreePort(51010, 51020)
+	if err != nil {
+		log.Fatalf(" Failed to find empty port within range[%d,%d] %v", 51010, 51020, err)
+	}
+	udmRpc = udm.NewNativeMsgReceiver(cfg, nil)
 }
 
 func TestMain(m *testing.M) {
