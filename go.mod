@@ -3,26 +3,50 @@ module github.com/raffleberry/udm
 go 1.27
 
 require (
-	github.com/siku2/arigo v0.3.0
-	github.com/stretchr/testify v1.12.1
-	modernc.org/sqlite v1.58.0
+	github.com/cavaliergopher/grab/v3 v3.0.1
+	github.com/godbus/dbus/v5 v5.2.2
+	modernc.org/tk9.0 v1.80.0
 )
 
 require (
-	github.com/cenkalti/hub v1.0.1-0.20160527103212-11382a9960d3 // indirect
-	github.com/cenkalti/rpc2 v0.0.0-20180727162946-9642ea02d0aa // indirect
+	github.com/adrg/xdg v0.5.3 // indirect
+	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.4.1 // indirect
-	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
-	modernc.org/libc v1.75.7 // indirect
+	golang.org/x/image v0.36.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	modernc.org/fileutil v1.4.0 // indirect
+	modernc.org/fsm v1.3.2 // indirect
+	modernc.org/gc/v3 v3.1.5 // indirect
+	modernc.org/knuth v0.6.0 // indirect
+	modernc.org/libX11 v0.11.32 // indirect
+	modernc.org/libXau v0.9.21 // indirect
+	modernc.org/libXdmcp v0.12.24 // indirect
+	modernc.org/libXft v0.10.61 // indirect
+	modernc.org/libXrender v0.9.26 // indirect
+	modernc.org/libbsd v0.11.17 // indirect
+	modernc.org/libc v1.75.6 // indirect
+	modernc.org/libexpat v0.10.27 // indirect
+	modernc.org/libfontconfig v0.8.17 // indirect
+	modernc.org/libfreetype v0.9.30 // indirect
+	modernc.org/libmd v0.12.29 // indirect
+	modernc.org/libtcl9.0 v0.18.0 // indirect
+	modernc.org/libtk9.0 v0.19.0 // indirect
+	modernc.org/libxcb v0.12.13 // indirect
+	modernc.org/libz v0.18.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
+	modernc.org/ngrab v0.1.0 // indirect
+	modernc.org/rec v0.3.10 // indirect
+	modernc.org/regexp v1.7.10 // indirect
+	modernc.org/sortutil v1.2.1 // indirect
+	modernc.org/strutil v1.2.1 // indirect
+	modernc.org/tcl9.0 v0.18.0 // indirect
+	modernc.org/token v1.1.0 // indirect
 )

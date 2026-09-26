@@ -1,0 +1,43 @@
+{
+  "manifest_version": 2,
+  "name": "udm",
+  "version": "1.0",
+  "description": "Sends every download to the udm download manager instead of letting the browser handle it.",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "udm@raffleberry",
+      "strict_min_version": "115.0"
+    }
+  },
+
+  "permissions": [
+    "nativeMessaging",
+    "downloads",
+    "notifications",
+    "webRequest",
+    "webRequestBlocking",
+    "contextMenus",
+    "http://127.0.0.1/*",
+    "<all_urls>"
+  ],
+
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+
+  "browser_action": {
+    "default_title": "udm",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon/udm-48.png",
+      "96": "icon/udm-96.png"
+    }
+  },
+
+  "icons": {
+    "48": "icon/udm-48.png",
+    "96": "icon/udm-96.png"
+  }
+}

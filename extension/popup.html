@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>udm</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icon/udm-48.png" alt="" width="24" height="24" />
+      <strong>udm</strong>
+      <span id="dot" class="dot" title="connection state"></span>
+    </header>
+
+    <label class="row">
+      <input type="checkbox" id="capture" />
+      <span>Send downloads to udm</span>
+    </label>
+
+    <p id="state" class="muted">checking…</p>
+
+    <form id="addform" class="row">
+      <input type="text" id="url" placeholder="https://…" />
+      <button type="submit">Add</button>
+    </form>
+
+    <p id="msg" class="muted"></p>
+
+    <footer>
+      <button type="button" id="clear" class="link">clear bypassed links</button>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,87 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1c1c1e;
+  --muted: #6b6b70;
+  --line: #d8d8dd;
+  --ok: #1a7f37;
+  --off: #b00020;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8ea;
+    --muted: #9a9aa0;
+    --line: #3a3a3f;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 12px;
+  width: 280px;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--fg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-left: auto;
+}
+
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--off); }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.muted {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover { border-color: var(--muted); }
+
+button.link {
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  text-decoration: underline;
+  font-size: 12px;
+}
+
+footer { margin-top: 10px; }
